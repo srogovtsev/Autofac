@@ -224,6 +224,29 @@ public class CircularDependencyTests
         Assert.Same(host.DependencyB, host.DependencyA.DependencyB);
     }
 
+    [Fact]
+    public void CircularDependenciesHandledWhenDecoratorInDependencyChain()
+    {
+        // Issue #1361 - Decorator in dependency chain breaks circular dependency resolution
+        var builder = new ContainerBuilder();
+
+        builder.RegisterType<OuterService>()
+            .SingleInstance();
+        builder.RegisterType<InnerService>()
+            .As<IInnerService>();
+        builder.RegisterType<InnermostService>()
+            .SingleInstance()
+            .PropertiesAutowired(PropertyWiringOptions.AllowCircularDependencies);
+
+        builder.RegisterDecorator<InnerServiceDecorator, IInnerService>();
+
+        using var container = builder.Build();
+        var outer = container.Resolve<OuterService>();
+        var innerMost = container.Resolve<InnermostService>();
+
+        Assert.Same(outer, innerMost.Outer);
+    }
+
     private interface ICircularDependencyA
     {
         ICircularDependencyB DependencyB { get; }
@@ -340,5 +363,36 @@ public class CircularDependencyTests
         public ServiceImpl(Guid id)
         {
         }
+    }
+
+    // Issue #1361 - Decorator in dependency chain breaks circular dependency resolution
+    private class OuterService
+    {
+        public OuterService(IInnerService service)
+        {
+        }
+    }
+
+    private interface IInnerService
+    {
+    }
+
+    private class InnerService : IInnerService
+    {
+        public InnerService(InnermostService service)
+        {
+        }
+    }
+
+    private class InnerServiceDecorator : IInnerService
+    {
+        public InnerServiceDecorator(IInnerService toDecorate)
+        {
+        }
+    }
+
+    private class InnermostService
+    {
+        public OuterService Outer { get; set; }
     }
 }
