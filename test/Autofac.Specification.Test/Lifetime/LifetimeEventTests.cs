@@ -593,6 +593,25 @@ public class LifetimeEventTests
         Assert.True(instance.Released);
     }
 
+    [Fact]
+    public void ActivatedAllowsBypassingCircularDependencies()
+    {
+        var builder = new ContainerBuilder();
+
+        builder.RegisterType<OuterService>()
+               .SingleInstance();
+        builder.RegisterType<InnerService>();
+        builder.RegisterType<InnermostService>()
+               .SingleInstance()
+               .OnActivated(args => args.Instance.Outer = args.Context.Resolve<OuterService>());
+
+        using var container = builder.Build();
+        var outer = container.Resolve<OuterService>();
+        var innerMost = container.Resolve<InnermostService>();
+
+        Assert.Same(outer, innerMost.Outer);
+    }
+
     private interface IService
     {
     }
@@ -631,5 +650,24 @@ public class LifetimeEventTests
         {
             Param = param;
         }
+    }
+
+    private class OuterService
+    {
+        public OuterService(InnerService service)
+        {
+        }
+    }
+
+    private class InnerService
+    {
+        public InnerService(InnermostService service)
+        {
+        }
+    }
+
+    private class InnermostService
+    {
+        public OuterService Outer { get; set; }
     }
 }
