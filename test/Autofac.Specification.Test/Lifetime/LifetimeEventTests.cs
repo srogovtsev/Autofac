@@ -593,17 +593,31 @@ public class LifetimeEventTests
         Assert.True(instance.Released);
     }
 
-    [Fact]
-    public void ActivatedAllowsBypassingCircularDependencies()
+    private static readonly Action<ContainerBuilder>[] ConfigurationsForCircularDependenciesImpl =
+    {
+        builder => { },
+        builder => builder.RegisterDecorator<InnerServiceDecorator, IInnerService>(),
+        builder => builder.RegisterDecorator<IInnerService>((_, __, toDecorate) => new InnerServiceDecorator(toDecorate)),
+    };
+
+    public static readonly object[][] ConfigurationsForCircularDependencies =
+        ConfigurationsForCircularDependenciesImpl.Select(c => new object[] {c}).ToArray();
+
+    [Theory]
+    [MemberData(nameof(ConfigurationsForCircularDependencies))]
+    public void ActivatedAllowsBypassingCircularDependencies(Action<ContainerBuilder> additionalContainerConfiguration)
     {
         var builder = new ContainerBuilder();
 
         builder.RegisterType<OuterService>()
-               .SingleInstance();
-        builder.RegisterType<InnerService>();
+            .SingleInstance();
+        builder.RegisterType<InnerService>()
+            .As<IInnerService>();
         builder.RegisterType<InnermostService>()
-               .SingleInstance()
-               .OnActivated(args => args.Instance.Outer = args.Context.Resolve<OuterService>());
+            .SingleInstance()
+            .OnActivated(args => args.Instance.Outer = args.Context.Resolve<OuterService>());
+
+        additionalContainerConfiguration(builder);
 
         using var container = builder.Build();
         var outer = container.Resolve<OuterService>();
@@ -654,14 +668,25 @@ public class LifetimeEventTests
 
     private class OuterService
     {
-        public OuterService(InnerService service)
+        public OuterService(IInnerService service)
         {
         }
     }
 
-    private class InnerService
+    private interface IInnerService
+    {
+    }
+
+    private class InnerService : IInnerService
     {
         public InnerService(InnermostService service)
+        {
+        }
+    }
+
+    private class InnerServiceDecorator : IInnerService
+    {
+        public InnerServiceDecorator(IInnerService toDecorate)
         {
         }
     }
